@@ -19,7 +19,16 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 sys.path.insert(0, str(Path(__file__).parent))
 from normalize import contains_match, exact_match  # noqa: E402
 
-SYSTEM = "You are a trivia expert. Answer with only the answer, no explanation."
+SYSTEM = ("Answer each trivia question with only the answer: a name, place, date, or short phrase. "
+          "No explanation, no extra words.")
+FEW_SHOT = [
+    ("Which planet is known as the Red Planet?", "Mars"),
+    ("Who wrote the play Romeo and Juliet?", "William Shakespeare"),
+    ("What is the chemical symbol for gold?", "Au"),
+    ("In which city is the Eiffel Tower?", "Paris"),
+]
+# Tokens skipped when locating the first answer token (CHOKE skips filler the same way).
+FILLER = {"", "the", "answer", "is", "it", "a", "an", "**", '"', "'", ":", "-", "–"}
 
 
 def load_config(path: str) -> dict:
@@ -50,7 +59,10 @@ def load_questions(cfg: dict) -> list[dict]:
 def build_prompts(tok, questions: list[str]) -> list[str]:
     prompts = []
     for q in questions:
-        msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": q}]
+        msgs = [{"role": "system", "content": SYSTEM}]
+        for fq, fa in FEW_SHOT:
+            msgs += [{"role": "user", "content": fq}, {"role": "assistant", "content": fa}]
+        msgs.append({"role": "user", "content": q})
         prompts.append(tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True,
                                                enable_thinking=False))
     return prompts
@@ -71,8 +83,19 @@ def run_batch(model, tok, prompts: list[str], max_new_tokens: int, device: str):
     gen_ids = out.sequences[:, prompt_len:]
     # scores: tuple(len=steps) of [B, V] logits for each generated token
     probs0 = torch.softmax(out.scores[0].float(), dim=-1)
-    top2 = probs0.topk(2, dim=-1).values
-    first_tok_prob = probs0.gather(1, gen_ids[:, :1]).squeeze(1)
+    raw_first_prob = probs0.gather(1, gen_ids[:, :1]).squeeze(1)
+    # First *content* token: skip filler like "The", "**", "answer", "is".
+    first_step = torch.zeros(gen_ids.shape[0], dtype=torch.long, device=device)
+    for b in range(gen_ids.shape[0]):
+        for step in range(gen_ids.shape[1]):
+            piece = tok.decode(gen_ids[b, step:step + 1]).strip().lower().strip(".,:*\"'")
+            if piece not in FILLER:
+                first_step[b] = step
+                break
+    probs_first = torch.stack([torch.softmax(out.scores[int(first_step[b])][b].float(), dim=-1)
+                               for b in range(gen_ids.shape[0])])
+    top2 = probs_first.topk(2, dim=-1).values
+    first_tok_prob = probs_first.gather(1, gen_ids.gather(1, first_step[:, None])).squeeze(1)
     top2_gap = top2[:, 0] - top2[:, 1]
     seq_logprob = torch.zeros(gen_ids.shape[0], device=device)
     min_tok_prob = torch.ones(gen_ids.shape[0], device=device)
@@ -90,6 +113,8 @@ def run_batch(model, tok, prompts: list[str], max_new_tokens: int, device: str):
     return {
         "answers": [a.strip() for a in answers],
         "first_tok_prob": first_tok_prob.cpu().numpy(),
+        "raw_first_prob": raw_first_prob.cpu().numpy(),
+        "first_step": first_step.cpu().numpy(),
         "top2_gap": top2_gap.cpu().numpy(),
         "seq_logprob": seq_logprob.cpu().numpy(),
         "min_tok_prob": min_tok_prob.cpu().numpy(),
@@ -131,6 +156,8 @@ def main() -> None:
                 "exact_match": exact_match(ans, r["aliases"]),
                 "contains_match": contains_match(ans, r["aliases"]),
                 "first_tok_prob": float(res["first_tok_prob"][j]),
+                "raw_first_prob": float(res["raw_first_prob"][j]),
+                "first_step": int(res["first_step"][j]),
                 "top2_gap": float(res["top2_gap"][j]),
                 "seq_logprob": float(res["seq_logprob"][j]),
                 "min_tok_prob": float(res["min_tok_prob"][j]),

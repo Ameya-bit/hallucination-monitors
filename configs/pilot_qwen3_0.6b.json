@@ -5,7 +5,7 @@
   "split": "validation",
   "n_questions": 2000,
   "batch_size": 8,
-  "max_new_tokens": 16,
+  "max_new_tokens": 24,
   "confident_threshold": 0.8,
   "seed": 0,
   "out_dir": "results/pilot_qwen3_0.6b",

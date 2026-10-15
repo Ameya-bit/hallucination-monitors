@@ -1,0 +1,10 @@
+{
+  "n": 2000,
+  "accuracy_contains": 0.398,
+  "accuracy_exact": 0.378,
+  "n_confident": 1057,
+  "n_confident_wrong": 405,
+  "confident_threshold": 0.8,
+  "gate_a_pass_150": true,
+  "minutes": 3.4047160665194194
+}

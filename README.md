@@ -10,6 +10,24 @@ internal activation signature that current hallucination monitors miss?
   every layer for the last prompt token and the first answer token. Pass criterion: at least
   150 wrong answers with first-token probability >= 0.8.
 
+## Gate A results (Oct 15, 2026)
+
+TriviaQA validation, first 2,000 questions, greedy decoding, 4-shot terse-answer prompt, thinking off.
+"Confident" = first content-token probability >= 0.8. AUROC is 5-fold out-of-fold, L2 logistic
+regression on the standardized residual stream at the last prompt token.
+
+| Model | Acc. | Confident | Confident and wrong | Token-prob AUROC (conf. subset) | Probe AUROC (conf. subset) | Best layer |
+|---|---|---|---|---|---|---|
+| Qwen3-0.6B | 13.9% | 637 | 531 | 0.55 | 0.79 [0.74, 0.83] | 18 |
+| Qwen3-4B | 39.8% | 1,057 | 405 | 0.68 | 0.76 [0.74, 0.79] | 24 |
+
+Both runs pass Gate A (>= 150 confident errors) and H1 (probe CI above the token-probability
+baseline on the confident subset). Known issues: labels are lexical and not yet judge-audited; the
+correctness-vs-confidence axis cosine in `metrics.json` is confounded by label overlap and must be
+recomputed within strata before use.
+
+Reproduce: `python src/pilot/analyze.py --run results/pilot_qwen3_4b --acts data/activations/pilot_qwen3_4b --label "Qwen3-4B"`.
+
 ## Setup
 
 ```bash

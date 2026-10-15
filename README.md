@@ -52,3 +52,19 @@ src/pilot/    Gate A pilot: generation + activation capture
 results/      summaries and per-question records (committed)
 data/         raw datasets and activations (ignored)
 ```
+
+## Notebook: every number behind the literature review
+
+`notebooks/lit_review.ipynb` (committed with outputs; figures in `results/figs/`). Phases 1 to 3 are done:
+
+1. **Output probability** (Orgad/Kadavath baselines): histograms, calibration, ROC, AUROC overall vs confident subset.
+2. **Semantic entropy** (Farquhar et al.): 5 samples at temperature 1 on 500 questions per model, string-match clustering
+   (`src/pilot/run_semantic_entropy.py`). SE beats token probability on the confident subset at 4B (0.73 vs 0.62) because
+   many confident errors are unstable under sampling. The stable-and-wrong remainder (51 of 110 confident errors at 4B)
+   is the hard set the project targets.
+3. **Confident-wrong population** (CHOKE existence claim): quadrants, threshold sweep, persistence across scale, label
+   sensitivity, eyeball sample.
+
+Phases 4 (probes) and 5 (paper side-by-side, stratified cosine) are next.
+
+Rerun: `cd notebooks && jupyter nbconvert --to notebook --execute --inplace lit_review.ipynb`.

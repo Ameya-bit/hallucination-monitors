@@ -65,6 +65,11 @@ data/         raw datasets and activations (ignored)
 3. **Confident-wrong population** (CHOKE existence claim): quadrants, threshold sweep, persistence across scale, label
    sensitivity, eyeball sample.
 
-Phases 4 (probes) and 5 (paper side-by-side, stratified cosine) are next.
+4. **Linear probes** (Orgad et al.): 5-fold out-of-fold L2 logistic probe and difference-of-means at every layer and two
+   token positions, cached in `results/<run>/oof_scores.npz` so the notebook reruns without activations. On the stable
+   hard set at 4B the probe holds at 0.76 while every output-side score is at 0.50 to 0.59.
+5. **Side-by-side and directions**: our numbers next to each paper's claim; stratified correctness-vs-confidence cosine
+   with a shuffled-label null (the null is not centred on zero, which matters for any CSO-style cosine criterion); and an
+   out-of-fold cross-prediction test. Correctness and confidence directions are distinct at 0.6B, largely shared at 4B.
 
 Rerun: `cd notebooks && jupyter nbconvert --to notebook --execute --inplace lit_review.ipynb`.

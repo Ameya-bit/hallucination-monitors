@@ -74,7 +74,7 @@ Three papers carry the argument; they are read in the order the argument runs: h
 
 \subsection{The blind spot: high-certainty hallucinations \citep{simhi2025choke}}
 
-\textbf{Claim.} A sizeable, stable fraction of hallucinations are produced with high certainty, across model families and datasets. Earlier work by the same group \citep{simhi2024ignorance} separates errors the model makes \emph{despite} knowing the answer (HK$^{+}$) from errors of ignorance (HK$^{-}$) using paired prompts that flip the answer. Existing detection and mitigation methods degrade on high-certainty hallucinations. \todo{check their table for whether probing-based detectors are among those that degrade}
+\textbf{Claim.} CHOKE (Certain Hallucinations Overriding Known Evidence) is the case where a model answers a question correctly under most phrasings, a trivial rephrasing flips it, and the wrong answer comes out with high certainty. Earlier work by the same group \citep{simhi2024ignorance} separates errors made \emph{despite} knowing the answer (HK$^{+}$) from errors of ignorance (HK$^{-}$) with exactly such paired prompts. Across Mistral-7B, Llama-3.1-8B and Gemma-2-9B, CHOKE is 16--43\% of HK$^{+}$ errors on Natural Questions and 8--26\% on TriviaQA (their Tables 1 and 4), and the examples are consistent across prompts. Most relevant for us: of the mitigation families they test, certainty-based and prompting methods drop sharply on CHOKE, while a linear probe on the residual stream is the one method that ``remains stable across all metrics'' (their Section 5.2, Figure 5b), and their own proposed fix is a probe trained with CHOKE examples oversampled.
 
 \begin{figure}[H]\centering
   \includegraphics[width=0.9\textwidth]{10_quadrants}\\[4pt]
@@ -82,7 +82,7 @@ Three papers carry the argument; they are read in the order the argument runs: h
   \caption{Top: the two-by-two on our pilot. The pink cell is confident-and-wrong: 531 of 2{,}000 at 0.6B, 405 at 4B. Bottom: at 4B, 90\% of confident-correct answers are stable under sampling but only 46\% of confident-wrong ones are; the pink bar is the share of confident errors that semantic entropy cannot see at all. Notebook Figures 10 and 9.}
 \end{figure}
 
-\textbf{What it gives us.} The population to study, and a warning. The population is large in our setup (20--27\% of all questions) and does not shrink much when the confidence threshold is raised (Figure~\ref{fig:sweep}). The warning is that ``confident'' by output probability is not the same as ``certain'': at 0.6B almost no confident answer is stable under sampling, so output probability is a poor proxy for model certainty in small models.
+\textbf{What it gives us.} The population to study, the first evidence that probes are the right tool for it, and a warning. One distinction matters: CHOKE proper requires showing the model \emph{knew} the answer, which needs paired prompts. Our pilot population is the broader ``confident and wrong'' set, which also contains errors of ignorance; it is 20--27\% of all questions and does not shrink much when the confidence threshold is raised (Figure~\ref{fig:sweep}). Narrowing it to CHOKE proper is the November 6 experiment. The warning is that ``confident'' by output probability is not the same as ``certain'': at 0.6B almost no confident answer is stable under sampling, so output probability is a poor proxy for model certainty in small models.
 
 \subsection{The internal signal: probes on hidden states \citep{orgad2025know}}
 
@@ -93,11 +93,11 @@ Three papers carry the argument; they are read in the order the argument runs: h
   \caption{Out-of-fold probe AUROC by layer on our pilot, two models and two token positions. Solid pink: probe on the confident subset. Dashed pink: token probability on the same subset. Best layers are 18 of 28 (0.6B) and 24 of 36 (4B), both at about two-thirds depth. Layer 18 is also the layer CSO-LLM selected for Qwen3-0.6B. Notebook Figure 14.}
 \end{figure}
 
-\textbf{What it gives us.} The method (a 5-fold out-of-fold logistic probe), the token position to read, the expectation that middle layers carry the signal, and a caveat we inherit: \citet{janiak2025illusion} show that lexical correctness labels inflate probe scores, so an LLM-judge audit is required before any number here is final.
+\textbf{What it gives us.} The method (a 5-fold out-of-fold logistic probe), the token position to read, the expectation that middle layers carry the signal, and a caveat we inherit: \citet{janiak2025illusion} show that lexical correctness labels inflate detector scores, with drops of up to 46\% when an LLM judge replaces lexical overlap, so an LLM-judge audit is required before any number here is final.
 
 \subsection{Where CSO-LLM enters, and the gap}
 
-CSO-LLM's criterion is a \emph{per-pair} displacement cosine: for a prompt and its perturbed twin, the cosine between the activation displacement and a reference axis. Nothing in the hallucination-monitor literature we reviewed applies a directional criterion of this kind. Probes ask ``is there a separating hyperplane''; CSO asks ``which way did the point move, relative to the axis that normal variation uses.'' The gap is therefore concrete: \textbf{no one has asked whether confident errors displace activations off the confidence axis.} Answering it needs paired prompts (the CHOKE protocol), which is the November 6 experiment. The population-level version, comparing the correctness axis to the confidence axis, can be done now and is reported in Section~\ref{sec:directions}.
+CSO-LLM \citep{li2026cso} penalises candidate trigger tokens whose activation perturbation points \emph{along} the direction of the putative target class; its criterion is a \emph{per-pair} displacement cosine: for a prompt and its perturbed twin, the cosine between the activation displacement and a reference axis. Nothing in the hallucination-monitor literature we reviewed applies a directional criterion of this kind. Probes ask ``is there a separating hyperplane''; CSO asks ``which way did the point move, relative to the axis that normal variation uses.'' The gap is therefore concrete: \textbf{no one has asked whether confident errors displace activations off the confidence axis.} Answering it needs paired prompts (the CHOKE protocol), which is the November 6 experiment. The population-level version, comparing the correctness axis to the confidence axis, can be done now and is reported in Section~\ref{sec:directions}.
 
 \subsection{The four questions the honors form asks of this phase}
 
@@ -107,9 +107,9 @@ CSO-LLM's criterion is a \emph{per-pair} displacement cosine: for a prompt and i
 \textbf{Form question} & \textbf{Answer from the literature} \\
 \midrule
 What do existing monitors measure? & Two families. Output-side: token probability, sequence log-probability, semantic entropy, self-consistency \citep{farquhar2024semantic,manakul2023selfcheck,kadavath2022know}. Internal: linear probes and mean-difference ``truth directions'' on hidden states \citep{orgad2025know,marks2023geometry,burger2024truth}. \\
-Where do they fail? & Output-side monitors fail by construction on answers the model gives consistently and with high probability \citep{farquhar2024semantic,simhi2025choke}. Probes fail to transfer across tasks and are inflated by lexical labels \citep{orgad2025know,janiak2025illusion}. \\
+Where do they fail? & Output-side monitors fail by construction on answers the model gives consistently and with high probability \citep{farquhar2024semantic,simhi2025choke}. Probes fail to transfer across tasks and are inflated by lexical labels \citep{orgad2025know,janiak2025illusion}, but are the one family that holds up on CHOKE examples \citep{simhi2025choke}. \\
 What candidate internal signals does the literature support? & A linear correctness direction in the residual stream, strongest at middle-to-late layers and at the answer token \citep{orgad2025know,marks2023geometry}. \\
-Have directional criteria been used? & Not for hallucination. Directional cosine criteria appear in backdoor detection (CSO-LLM) and in work on steering vectors, but hallucination monitors to date are classifiers, not direction tests. \\
+Have directional criteria been used? & Not for hallucination. Directional cosine criteria appear in backdoor detection \citep{li2026cso} and in work on steering vectors, but hallucination monitors to date are classifiers, not direction tests. \\
 \bottomrule
 \end{tabular}
 \end{table}

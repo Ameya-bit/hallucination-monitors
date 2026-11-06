@@ -56,20 +56,27 @@ def main() -> None:
     ap.add_argument("--n_questions", type=int, default=500)
     ap.add_argument("--k", type=int, default=5)
     ap.add_argument("--batch_size", type=int, default=8)
+    ap.add_argument("--start", type=int, default=0, help="skip the first START questions (e.g. 500 for a held-out set)")
+    ap.add_argument("--out_name", default="semantic_entropy.jsonl")
     args = ap.parse_args()
+    if not 0 <= args.start < args.n_questions:
+        ap.error(f"--start must be in [0, n_questions={args.n_questions})")
     cfg = load_config(args.config)
     torch.manual_seed(cfg["seed"])
     device = pick_device()
-    out_path = Path(cfg["out_dir"]) / "semantic_entropy.jsonl"
+    out_path = Path(cfg["out_dir"]) / args.out_name
+    # resumable: questions already in the output file are skipped and new ones appended
+    done = {json.loads(line)["qid"] for line in out_path.open()} if out_path.exists() else set()
 
-    print(f"device={device} model={cfg['model_id']} n={args.n_questions} k={args.k}", flush=True)
+    print(f"device={device} model={cfg['model_id']} questions {args.start}..{args.n_questions - 1} k={args.k} "
+          f"-> {out_path} ({len(done)} already done)", flush=True)
     tok = AutoTokenizer.from_pretrained(cfg["model_id"], padding_side="left")
     model = AutoModelForCausalLM.from_pretrained(cfg["model_id"], dtype=torch.bfloat16).to(device).eval()
-    rows = load_questions({**cfg, "n_questions": args.n_questions})
+    rows = [r for r in load_questions({**cfg, "n_questions": args.n_questions})[args.start:] if r["qid"] not in done]
     prompts = build_prompts(tok, [r["question"] for r in rows])
 
     t0 = time.time()
-    with out_path.open("w") as f:
+    with out_path.open("a") as f:
         for i in tqdm(range(0, len(rows), args.batch_size), file=sys.stdout, mininterval=30):
             batch_rows = rows[i:i + args.batch_size]
             samples = sample_batch(model, tok, prompts[i:i + args.batch_size], args.k, cfg["max_new_tokens"], device)
